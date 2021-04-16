@@ -9,13 +9,16 @@ BEGIN
   FROM board_sd_bot_user
   WHERE Code = UserCode LIMIT 1;
 
-  IF EXISTS (SELECT
-        bsuc.*
+  IF EXISTS (SELECT        bsuc.*
       FROM board_sd_user_category bsuc
       WHERE bsuc.UserId = UserId
       AND bsuc.CategoryId = CategoryId) THEN
   BEGIN
     SET Result = -1;
+  END;
+  ELSEIF NOT EXISTS(SELECT bsc.* FROM board_sd_category bsc WHERE bsc.Id = CategoryId) THEN
+  BEGIN
+    set Result = -2;
   END;
   ELSE
   BEGIN

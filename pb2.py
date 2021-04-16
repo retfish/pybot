@@ -6,7 +6,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-from notificationtime import *
+# from notificationtime import *
 import asyncio
 import logging
 import time
@@ -19,7 +19,7 @@ from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.types import ReplyKeyboardRemove, \
     ReplyKeyboardMarkup, KeyboardButton, \
-    InlineKeyboardMarkup, InlineKeyboardButton, callback_query, message
+    InlineKeyboardMarkup, InlineKeyboardButton, callback_query, message, update
 from aiogram.utils import executor
 from aiogram.utils.markdown import text
 
@@ -33,7 +33,6 @@ class SetStates(StatesGroup):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
 TOKEN = '1743194367:AAGT1halXXTf-i7UG7-XCUkEDT0SOZ6vz5g'
 bot = Bot(token=TOKEN)
 
@@ -83,9 +82,7 @@ async def all_msg_handler(message: types.Message):
     if message.from_user.is_bot:
         return ()
     user_id = message.from_user.id
-    logger.debug('1')
     data_update(user_id)
-    logger.debug('2')
     conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
                            db='bot1', use_unicode=1, charset='utf8')
     conn.autocommit(True)
@@ -118,7 +115,8 @@ async def all_msg_handler(message: types.Message):
     logger.debug('5')
     if userid == 0:
         return ()
-    logger.debug('6')
+    logger.debug(user_id)
+    logger.debug(userid)
     if button_text.find('Подписаться') > 0:
         cursor.execute("SELECT * FROM board_sd_category where Id not in " +
                        "(select CategoryId from board_sd_user_category where UserId='%s')", userid)
@@ -144,9 +142,11 @@ async def all_msg_handler(message: types.Message):
             cat = category[0]
             url = category[1]
             descr = category[2]
+            """
             icon = category[3]
             if len(icon) > 0:
                 descr = icon + " " + descr
+            """
             keys.row(InlineKeyboardButton(descr, callback_data='cat_out_' + str(cat)))
         await message.reply('❎ Отписаться', reply_markup=keys)
 
@@ -161,12 +161,16 @@ async def info_msg_handler(message: types.Message):
                            db='bot1', use_unicode=1, charset='utf8')
     conn.autocommit(True)
     cursor = conn.cursor()
-
-    cursor.execute('SELECT TimeFrom FROM board_sd_bot_user WHERE Code = %s', userid)
-    t_from = cursor.fetchone()
-    cursor.execute('SELECT TimeTo FROM board_sd_bot_user WHERE Code = %s', userid)
-    t_to = cursor.fetchone()
-    await message.reply('Время оповещения с ' + str(t_from[0]) + ' до ' + str(t_to[0]))
+    cursor.execute("SELECT AllTime FROM board_sd_bot_user WHERE Code = %s", userid)
+    alltime = cursor.fetchone()
+    if alltime[0] == 1:
+        await message.reply('Уведомления будут приходить круглосуточно')
+    else:
+        cursor.execute('SELECT TimeFrom FROM board_sd_bot_user WHERE Code = %s', userid)
+        t_from = cursor.fetchone()
+        cursor.execute('SELECT TimeTo FROM board_sd_bot_user WHERE Code = %s', userid)
+        t_to = cursor.fetchone()
+        await message.reply('Время оповещения с ' + str(t_from[0]) + ' до ' + str(t_to[0]))
 
     cursor.close()
     conn.close()
@@ -174,36 +178,89 @@ async def info_msg_handler(message: types.Message):
 
 @dp.message_handler(lambda message: message.text and 'настройки' in message.text.lower())
 async def settings_handler(message: types.Message):
-    button_text = message.text
-    userid = message.from_user.id
     settings_keys = InlineKeyboardMarkup()
     settings_keys.row(InlineKeyboardButton('Время оповещений', callback_data='sets'),
-                      InlineKeyboardButton('More', callback_data='more'))
+                      InlineKeyboardButton('Установить время оповещения круглосуточно', callback_data='alltime'))
     await message.reply('Что настраиваем', reply_markup=settings_keys)
 
 
-@dp.callback_query_handler(lambda c: c.data and c.data == 'sets', state=SetStates.timeFrom)
-async def settings_handler(callback_query: types.CallbackQuery, ms: types.Message):
-    await bot.send_message(callback_query.from_user.id, 'Время начала(с 0 до 23)')
-    await ms.answer('Время начала(с 0 до 23)')
-    if 0 > int(ms.text) > 23:
-        await ms.reply('Время начала(с 0 до 23)')
-        return
-    if not ms.text.isdigit():
-        await ms.reply('Цифрами')
-        return
+@dp.callback_query_handler(lambda atime: atime.data and atime.data.startswith('alltime'))
+async def set_default(cbq: types.CallbackQuery):
+    userid = cbq.from_user.id
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE board_sd_bot_user SET AllTime = 1, TimeFrom = NULL, TimeTo = NULL WHERE Code = %s', userid)
+    cursor.close()
+    conn.close()
+    await bot.edit_message_text(
+        text='Уведомления будет приходить круглосуточно',
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id, )
+
+    await bot.answer_callback_query(cbq.id, text='')
+
+
+@dp.callback_query_handler(lambda cb: cb.data and cb.data.startswith('sets'))
+async def t_from_set(cbq: types.CallbackQuery):
+    await SetStates.timeFrom.set()
+    await bot.send_message(cbq.from_user.id, 'Введите время начала,от 0 до 23')
+    # cbq.message.chat.id
+    await bot.edit_message_text(
+        text='Настройки времени оповещений',
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id, )
+
+    await bot.answer_callback_query(cbq.id, text='')
+
+
+@dp.message_handler(
+    lambda message1: not message1.text.isdigit() or message1.text.isdigit() and int(message1.text) not in range(0, 24),
+    state=SetStates.timeFrom)
+async def process_gender_invalid(msg: types.Message):
+    return await msg.reply("Это не число,повторите ввод.")
+
+
+@dp.message_handler(state=SetStates.timeFrom)
+async def set_time_from(msg: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['timeFrom'] = msg.text
+    await SetStates.next()
+    await msg.reply("Введите время окончания,с 1 до 24")
+
+
+@dp.message_handler(lambda mess: not mess.text.isdigit() or mess.text.isdigit() and int(mess.text) not in range(1, 25), state=SetStates.timeTo)
+async def set_time_to(msg: types.Message, state: FSMContext):
+        return await msg.reply('Неправильно,ещё раз')
+
+
+@dp.message_handler(state=SetStates.timeTo)
+async def time_to_confirm(mess: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data ['timeTo'] = mess.text
+    d1 = data['timeFrom']
+    d2 = data['timeTo']
+    if d2 <= d1:
+        return await mess.reply('Неправильно,ещё раз')
     else:
-        await SetStates.timeFrom.set()
-        await ms.reply('sd')
+        await bot.send_message(
+            mess.chat.id, 'Закончили')
+        await state.finish()
+    user_id = mess.from_user.id
+    logger.debug(d1)
+    logger.debug(d2)
+    logger.debug(user_id)
 
-
-@dp.message_handler(state=SetStates.timeFrom, content_types=types.ContentTypes.TEXT)
-async def t_from_step(message: types.Message, state: FSMContext):
-    if not any(map(str.isdigit, message.text)):
-        await message.reply("Пожалуйста напишите свое имя")
-        return
-    await state.update_data(name_user=message.text.title())
-    await message.answer(text='Время окончания с 1 до 24')
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE board_sd_bot_user SET TimeFrom = %s WHERE Code = %s', (d1, user_id))
+    cursor.execute('UPDATE board_sd_bot_user SET TimeTo = %s WHERE Code = %s', (d2, user_id))
+    cursor.execute('UPDATE board_sd_bot_user SET AllTime = 0 WHERE Code = %s', user_id)
+    cursor.close()
+    conn.close()
 
 
 # Обработка подписки
@@ -229,8 +286,7 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
     cursor.execute('SET NAMES utf8;')
     cursor.execute('SET CHARACTER SET utf8;')
     cursor.execute('SET character_set_connection=utf8;')
-
-    if code == 1:
+    if code in range(1,5):
         cursor.callproc('AddCategoryToUser', (user_code, code, 0))
         cursor.execute('SELECT @_AddCategoryToUser_0, @_AddCategoryToUser_1, @_AddCategoryToUser_2')
         res = cursor.fetchone()
@@ -238,30 +294,27 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
         if res[2] < 0:
             successfully = False
         await bot.answer_callback_query(callback_query.id, text='Подисываемся')
-    if code == 2:
-        cursor.callproc('AddCategoryToUser', (user_code, code, 0))
-        cursor.execute('SELECT @_AddCategoryToUser_0, @_AddCategoryToUser_1, @_AddCategoryToUser_2')
-        res = cursor.fetchone()
-        if res[2] < 0:
-            successfully = False
-        await bot.answer_callback_query(callback_query.id, text='Подисываемся')
-    if code == 3:
-        cursor.callproc('AddCategoryToUser', (user_code, code, 0))
-        cursor.execute('SELECT @_AddCategoryToUser_0, @_AddCategoryToUser_1, @_AddCategoryToUser_2')
-        res = cursor.fetchone()
-        if res[2] < 0:
-            successfully = False
-        await bot.answer_callback_query(callback_query.id, text='Подисываемся')
-
+    else:
+        await bot.send_message(text='Nope', chat_id=callback_query.from_user.id)
     cursor.close()
     conn.close()
 
     if successfully:
-        await bot.send_message(callback_query.from_user.id, 'Подписка оформлено успешно',
-                               reply_markup=ReplyKeyboardRemove())
+        await bot.edit_message_text(
+            text='Успешно подписались',
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id, )
+
+        await bot.answer_callback_query(callback_query.id, text='')
+
     else:
-        await bot.send_message(callback_query.from_user.id, 'Подписка уже оформлена',
-                               reply_markup=ReplyKeyboardRemove())
+        await bot.edit_message_text(
+            text='Уже подписались',
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id, )
+
+        await bot.answer_callback_query(callback_query.id, text='')
+
 
 
 # Обработка отписки
@@ -284,38 +337,32 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
     cursor.execute('SET NAMES utf8;')
     cursor.execute('SET CHARACTER SET utf8;')
     cursor.execute('SET character_set_connection=utf8;')
-
-    if code == 1:
+    if code in range(1,5):
         cursor.callproc('DeleteCategoryToUser', (user_code, code, 0))
         cursor.execute('SELECT @_DeleteCategoryToUser_0, @_DeleteCategoryToUser_1, @_DeleteCategoryToUser_2')
         res = cursor.fetchone()
         if res[2] < 0:
             successfully = False
         await bot.answer_callback_query(callback_query.id, text='Отписываемся')
-    if code == 2:
-        cursor.callproc('DeleteCategoryToUser', (user_code, code, 0))
-        cursor.execute('SELECT @_DeleteCategoryToUser_0, @_DeleteCategoryToUser_1, @_DeleteCategoryToUser_2')
-        res = cursor.fetchone()
-        if res[2] < 0:
-            successfully = False
-        await bot.answer_callback_query(callback_query.id, text='Отписываемся')
-    if code == 3:
-        cursor.callproc('DeleteCategoryToUser', (user_code, code, 0))
-        cursor.execute('SELECT @_DeleteCategoryToUser_0, @_DeleteCategoryToUser_1, @_DeleteCategoryToUser_2')
-        res = cursor.fetchone()
-        if res[2] < 0:
-            successfully = False
-        await bot.answer_callback_query(callback_query.id, text='Отписываемся')
-
+    else:
+        await bot.send_message(text='Nope', chat_id=callback_query.from_user.id)
     cursor.close()
     conn.close()
 
     if successfully:
-        await bot.send_message(callback_query.from_user.id, 'Успешно отписались')
+        await bot.edit_message_text(
+            text='Отписались',
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id, )
+
+        await bot.answer_callback_query(callback_query.id, text='')
     else:
-        await bot.send_message(callback_query.from_user.id, 'Уже отписались ранее')
-    # await bot.edit_message_text(inline_message_id=callback_query.inline_message_id, message="1")
-    await bot.delete_message(message_id=callback_query.inline_message_id)
+        await bot.edit_message_text(
+            text='ОТписались ещё раз',
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id, )
+
+        await bot.answer_callback_query(callback_query.id, text='')
 
 
 ##
@@ -347,3 +394,4 @@ if __name__ == '__main__':
     loop.run_forever()
 
     print('stop', time.ctime())
+

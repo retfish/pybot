@@ -1,0 +1,28 @@
+CREATE 
+DEFINER = 'ret'@'%'
+PROCEDURE bot1.AddCategoryToUser(IN UserCode varchar(16), IN CategoryId int, OUT Result tinyint)
+BEGIN
+  DECLARE UserId int;
+
+  SELECT
+    Id INTO UserId
+  FROM board_sd_bot_user
+  WHERE Code = UserCode LIMIT 1;
+
+  IF EXISTS (SELECT
+        bsuc.*
+      FROM board_sd_user_category bsuc
+      WHERE bsuc.UserId = UserId
+      AND bsuc.CategoryId = CategoryId) THEN
+  BEGIN
+    SET Result = -1;
+  END;
+  ELSE
+  BEGIN
+    SET Result = 1;
+    INSERT INTO board_sd_user_category (UserId, CategoryId)
+      VALUES (UserId, CategoryId);
+  END;
+  END IF;
+
+END

@@ -27,6 +27,14 @@ from aiogram.utils.markdown import text
 class SetStates(StatesGroup):
     timeFrom = State()
     timeTo = State()
+    yway = State()
+    setCity = State()
+    addFilters = State()
+    edit = State()
+    qwe = State()
+    rty = State()
+    uio = State()
+    pas = State()
 
 
 # Configure logging
@@ -41,6 +49,7 @@ dp = Dispatcher(bot, storage=storage)
 
 print(datetime.today())
 
+city_list_const = ['Лисичанск', 'Северодонецк', 'Рубежное']
 
 def data_update(user_id):
     visit_date = datetime.today()
@@ -71,6 +80,9 @@ async def process_start_command(message: types.Message):
                         "Выбирай нужное действие в меню",
                         reply_markup=markup_zero)
     data_update(message.from_user.id)
+
+
+# Подписки\Отписки
 
 
 @dp.message_handler(lambda message: message.text and 'писаться' in message.text.lower())
@@ -131,7 +143,7 @@ async def all_msg_handler(message: types.Message):
             #    descr = icon + " " + descr
             #    logger.debug(icon)
             keys.row(InlineKeyboardButton(descr, callback_data='cat_in_' + str(cat)))
-        await message.reply('✅ Подписаться', reply_markup=keys)
+        await message.reply('✅ Подписаться', reply_markup=keys, reply=False)
 
     if button_text.find('Отписаться') > 0:
         cursor.execute("SELECT * FROM board_sd_category where Id in " +
@@ -148,10 +160,13 @@ async def all_msg_handler(message: types.Message):
                 descr = icon + " " + descr
             """
             keys.row(InlineKeyboardButton(descr, callback_data='cat_out_' + str(cat)))
-        await message.reply('❎ Отписаться', reply_markup=keys)
+        await message.reply('❎ Отписаться', reply_markup=keys, reply=False)
 
     cursor.close()
     conn.close()
+
+
+# Информация
 
 
 @dp.message_handler(lambda message: message.text and 'информация' in message.text.lower())
@@ -164,24 +179,161 @@ async def info_msg_handler(message: types.Message):
     cursor.execute("SELECT AllTime FROM board_sd_bot_user WHERE Code = %s", userid)
     alltime = cursor.fetchone()
     if alltime[0] == 1:
-        await message.reply('Уведомления будут приходить круглосуточно')
+        await message.reply('Уведомления будут приходить круглосуточно', reply=False)
     else:
         cursor.execute('SELECT TimeFrom FROM board_sd_bot_user WHERE Code = %s', userid)
         t_from = cursor.fetchone()
         cursor.execute('SELECT TimeTo FROM board_sd_bot_user WHERE Code = %s', userid)
         t_to = cursor.fetchone()
-        await message.reply('Время оповещения с ' + str(t_from[0]) + ' до ' + str(t_to[0]))
+        await message.reply('Время оповещения с ' + str(t_from[0]) + ' до ' + str(t_to[0]), reply=False)
 
     cursor.close()
     conn.close()
 
 
+# Настройки
+
+
 @dp.message_handler(lambda message: message.text and 'настройки' in message.text.lower())
 async def settings_handler(message: types.Message):
-    settings_keys = InlineKeyboardMarkup()
-    settings_keys.row(InlineKeyboardButton('Время оповещений', callback_data='sets'),
-                      InlineKeyboardButton('Установить время оповещения круглосуточно', callback_data='alltime'))
-    await message.reply('Что настраиваем', reply_markup=settings_keys)
+    settings_keys = InlineKeyboardMarkup(row_width=1)
+    settings_keys.add(InlineKeyboardButton('Время оповещений', callback_data='sets'),
+                      InlineKeyboardButton('Установить время оповещения круглосуточно', callback_data='alltime'),
+                      InlineKeyboardButton('Настроить фильтры', callback_data='f_sets'))
+    await message.reply('Что настраиваем', reply_markup=settings_keys, reply=False)
+
+
+# Категории для настройки
+
+
+@dp.callback_query_handler(lambda atime: atime.data and atime.data.startswith('f_sets'))
+async def f_sets_show_category(cbq: types.CallbackQuery):
+    user_id = cbq.from_user.id
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    keys = InlineKeyboardMarkup(row_width=1)
+    cursor.execute("SELECT Id FROM board_sd_bot_user where Code=%s", user_id)
+    userid = cursor.fetchone()
+    userid = str(userid[0])
+    # print(userid)
+    cursor.execute('SELECT CategoryId FROM board_sd_user_category WHERE UserId = %s', userid)
+    categories = cursor.fetchall()
+    for i in categories:
+        cursor.execute('SELECT * FROM board_sd_category WHERE Id = %s', i[0])
+        categories_2 = cursor.fetchall()
+        for i2 in categories_2:
+            name = i2[2]
+            cb_id = i[0]
+            keys.row(InlineKeyboardButton(name,callback_data='f_sets' + str(cb_id) ))
+    await bot.send_message(cbq.from_user.id, text='Выбрать категорию для настройки', reply_markup=keys)
+    await bot.edit_message_text(
+        text='Выберите категорию для настройки',
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id, )
+    await SetStates.edit.set()
+    cursor.close()
+    conn.close()
+
+
+# Настройки категорий
+
+
+@dp.callback_query_handler(lambda atime: atime.data and atime.data.startswith('f_sets'), state=SetStates.edit)
+async def f_sets_cats(cbq: types.CallbackQuery, state: FSMContext):
+    cat = str(cbq.data[6:])
+    print(cat)
+    kbd_for_set = InlineKeyboardMarkup(row_width=2)
+    kbd_for_set.add(InlineKeyboardButton('Добавить список фильтров', callback_data='qwe_' + cat),
+                    InlineKeyboardButton('Добавить город', callback_data='rty_' + cat),
+                    InlineKeyboardButton('Убрать из списка фидьров', callback_data='uio_' + cat),
+                    InlineKeyboardButton('Убрать город', callback_data='pas_' + cat))
+    await bot.edit_message_text(
+        text='Настраиваем..',
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id,
+        reply_markup=kbd_for_set)
+    await state.finish()
+
+# Настройки категорий >>> Добавить список фильтров (qwe)
+
+
+@dp.callback_query_handler(lambda c1: c1.data and c1.data.startswith('qwe_'))
+async def test(cbq: types.CallbackQuery, state: FSMContext):
+    cat = str(cbq.data[4:])
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    cursor.execute('SELECT FiltersList FROM board_sd_user_category WHERE CategoryId = %s', cat)
+    filters_list = cursor.fetchone()
+
+    if filters_list[0] is None:
+        str1 = 'Список пуст,введите слова через запятую'
+    else:
+        str1 = 'Текущий список: ' + filters_list[0] + '.Введите слова которые хотите добавить.'
+    await bot.edit_message_text(
+        text=str1,
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id)
+    await SetStates.qwe.set()
+
+    async with state.proxy() as data:
+        data['qwe'] = cat
+    conn.close()
+    cursor.close()
+
+
+# Добавление списка фильров через настройки (qwe)
+
+
+@dp.message_handler(state=SetStates.qwe)
+async def qwe(msg: types.Message, state: FSMContext):
+    acquired = msg.text.split(',')
+    async with state.proxy() as data:
+        cat = data['qwe']
+
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    cursor.execute('SELECT FiltersList FROM board_sd_user_category WHERE CategoryId = %s', cat)
+    current = cursor.fetchone()
+    current = current[0]
+    if current is not None:
+        for i in acquired:
+            if i not in current:
+                current += ',' + i
+        cursor.execute('UPDATE board_sd_user_category SET FiltersList = %s WHERE CategoryId = %s', (current, cat))
+    else:
+        s = ','.join(str(x) for x in acquired)
+        cursor.execute('UPDATE board_sd_user_category SET FiltersList = %s WHERE CategoryId = %s', (s, cat))
+    conn.close()
+    cursor.close()
+    async with state.proxy() as data:
+        data['qwe'] = None
+    await state.finish()
+    await bot.send_message(text='Фильтры добавлены.', chat_id=msg.from_user.id)
+
+
+
+# Установка времени оповещений по умолчанию
 
 
 @dp.callback_query_handler(lambda atime: atime.data and atime.data.startswith('alltime'))
@@ -195,11 +347,14 @@ async def set_default(cbq: types.CallbackQuery):
     cursor.close()
     conn.close()
     await bot.edit_message_text(
-        text='Уведомления будет приходить круглосуточно',
+        text='Уведомления будут приходить круглосуточно',
         chat_id=cbq.message.chat.id,
         message_id=cbq.message.message_id, )
 
     await bot.answer_callback_query(cbq.id, text='')
+
+
+# НАчало настройки времени оповещений
 
 
 @dp.callback_query_handler(lambda cb: cb.data and cb.data.startswith('sets'))
@@ -230,15 +385,19 @@ async def set_time_from(msg: types.Message, state: FSMContext):
     await msg.reply("Введите время окончания,с 1 до 24")
 
 
-@dp.message_handler(lambda mess: not mess.text.isdigit() or mess.text.isdigit() and int(mess.text) not in range(1, 25), state=SetStates.timeTo)
+@dp.message_handler(lambda mess: not mess.text.isdigit() or mess.text.isdigit() and int(mess.text) not in range(1, 25),
+                    state=SetStates.timeTo)
 async def set_time_to(msg: types.Message, state: FSMContext):
-        return await msg.reply('Неправильно,ещё раз')
+    return await msg.reply('Неправильно,ещё раз')
+
+
+# Последний шаг настройки времени оповещений
 
 
 @dp.message_handler(state=SetStates.timeTo)
 async def time_to_confirm(mess: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data ['timeTo'] = mess.text
+        data['timeTo'] = mess.text
     d1 = data['timeFrom']
     d2 = data['timeTo']
     if d2 <= d1:
@@ -286,7 +445,7 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
     cursor.execute('SET NAMES utf8;')
     cursor.execute('SET CHARACTER SET utf8;')
     cursor.execute('SET character_set_connection=utf8;')
-    if code in range(1,5):
+    if code in range(1, 5):
         cursor.callproc('AddCategoryToUser', (user_code, code, 0))
         cursor.execute('SELECT @_AddCategoryToUser_0, @_AddCategoryToUser_1, @_AddCategoryToUser_2')
         res = cursor.fetchone()
@@ -298,14 +457,16 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
         await bot.send_message(text='Nope', chat_id=callback_query.from_user.id)
     cursor.close()
     conn.close()
+    ks = InlineKeyboardMarkup()
+    ks.row(InlineKeyboardButton('Да', callback_data='Yes'),
+           (InlineKeyboardButton('Нет', callback_data='No' + str(code))))
 
     if successfully:
         await bot.edit_message_text(
-            text='Успешно подписались',
+            text='Успешно подписались.Настроить фильтры?',
             chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id, )
-
-        await bot.answer_callback_query(callback_query.id, text='')
+            message_id=callback_query.message.message_id,
+            reply_markup=ks)
 
     else:
         await bot.edit_message_text(
@@ -315,6 +476,187 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
 
         await bot.answer_callback_query(callback_query.id, text='')
 
+
+# Добавление фильтров после подписки 1
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('Yes'))
+async def yes_way(cbq: types.CallbackQuery):
+    await SetStates.yway.set()
+    await bot.send_message(cbq.from_user.id, 'Ввести список через запятую')
+    await bot.edit_message_text(
+        text='Список слов для отсеивания',
+        chat_id=cbq.message.chat.id,
+        message_id=cbq.message.message_id, )
+    await bot.answer_callback_query(cbq.id, text='')
+
+
+# Добавление фильтров после подписки 2
+
+
+@dp.message_handler(state=SetStates.yway)
+async def y_way(msg: types.Message, state: FSMContext):
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    user_id = msg.from_user.id
+    cursor.execute('SELECT Id FROM board_sd_bot_user WHERE Code = %s', user_id)
+    user_code = cursor.fetchone()
+    logger.debug(user_code[0])
+    cursor.execute('SELECT CategoryId FROM board_sd_user_category WHERE UserId = %s', user_code[0])
+    user_cat = cursor.fetchone()
+    f_list = msg.text.split()
+    cursor.execute('SELECT FiltersList FROM board_sd_user_category WHERE UserId = %s', user_cat[0])
+    cur_fltrs_lst = cursor.fetchone()
+    if cur_fltrs_lst is None:
+        print('1')
+        for i in f_list:
+            cursor.execute('UPDATE board_sd_user_category SET FiltersList = %s WHERE UserId = %s AND CategoryId = %s',
+                           (i, user_code[0], user_cat[0]))
+    else:
+        print('2')
+        for i2 in f_list:
+            i2 += cur_fltrs_lst
+            cursor.execute('UPDATE board_sd_user_category SET FiltersList = %s WHERE UserId = %s AND CategoryId = %s',
+                           (i2, user_code[0], user_cat[0]))
+    """
+    for i in f_list:
+        cursor.execute('UPDATE board_sd_user_category SET FiltersList = %s WHERE UserId = %s AND CategoryId = %s',
+                       (i, user_code[0], user_cat[0]))
+    
+    for i in f_list:
+        cursor.execute('INSERT IGNORE INTO board_sd_user_category(UserId, CategoryId, FiltersList) VALUES (%s, %s , %s)',
+                       (user_code[0], user_cat[0], i))
+    """
+    cursor.close()
+    conn.close()
+    await state.finish()
+
+    kbd = InlineKeyboardMarkup()
+    kbd.row(InlineKeyboardButton('Да', callback_data='city_y', ),
+            InlineKeyboardButton('Нет', callback_data='city_n'))
+    await bot.send_message(text='Фильтры добавлены,теперь выберем город?', chat_id=msg.from_user.id, reply_markup=kbd)
+
+    # print(f_list)
+
+    pass
+
+
+# Отказ от настройки фильтров после подписки (done)
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('No'))  # done
+async def no_way(cbq: types.CallbackQuery):
+    cat = str(cbq.data[2:])
+    kbd = InlineKeyboardMarkup()
+    kbd.row(InlineKeyboardButton('Да', callback_data='city_y' + cat ),
+            InlineKeyboardButton('Нет', callback_data='city_n' + cat))
+    await bot.edit_message_text(text='Настроить фильтры всегда можно в настройках,а теперь выберем город?',
+                                chat_id=cbq.message.chat.id,
+                                message_id=cbq.message.message_id, reply_markup=kbd)
+
+# Отказ от выбора города при подписке (done)
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_n'))
+async def city_no(cbq: types.CallbackQuery):
+    print(cbq.data)
+    # s = 'Лисичанск,Северодонецк,Рубежное'
+    s = ','.join(str(x) for x in city_list_const)
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    user_id = cbq.from_user.id
+    cursor.execute('SELECT Id FROM board_sd_bot_user WHERE Code = %s', user_id)
+    user_code = cursor.fetchone()
+    logger.debug(user_code[0])
+
+    user_cat = str(cbq.data[6:])
+
+    cursor.execute('UPDATE board_sd_user_category SET CityList = %s WHERE UserId = %s AND CategoryId = %s', (s,
+                                                                                                             user_code[
+                                                                                                                 0],
+                                                                                                             user_cat
+                                                                                                                 ))
+    cursor.close()
+    conn.close()
+    print(user_code[0])
+    print(user_cat[0])
+    await bot.edit_message_text(text='блалала',
+                                chat_id=cbq.message.chat.id,
+                                message_id=cbq.message.message_id)
+
+# Кнопки для ывбора города при подписке (done)
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_y'))
+async def city_yes(cbq: types.CallbackQuery):
+    cat = str(cbq.data[6:])
+    print(cbq.data)
+    # s = 'Лисичанск,Северодонецк,Рубежное'
+    s = ','.join(str(x) for x in city_list_const) # https://stackoverflow.com/questions/497765/python-string-joinlist-on-object-array-rather-than-string-array
+    kbd = InlineKeyboardMarkup()
+    for i in s.split(','):
+        kbd.row(InlineKeyboardButton(i, callback_data='ssq' + str(i) + cat))
+        await bot.edit_message_text(text='блалала2',
+                                    chat_id=cbq.message.chat.id,
+                                    message_id=cbq.message.message_id,
+                                    reply_markup=kbd)
+
+# Внесение города в базу (done)
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('ssq'))
+async def city_yes_yes(cbq: types.CallbackQuery):
+    city = str(cbq.data[3:-1])
+    cat = str(cbq.data[-1])
+    print('588 ', city , cat)
+    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+                           db='bot1', use_unicode=1, charset='utf8')
+    conn.autocommit(True)
+
+    cursor = conn.cursor()
+    cursor.execute('SET NAMES utf8;')
+    cursor.execute('SET CHARACTER SET utf8;')
+    cursor.execute('SET character_set_connection=utf8;')
+
+    user_id = cbq.from_user.id
+    cursor.execute('SELECT Id FROM board_sd_bot_user WHERE Code = %s', user_id)
+    user_code = cursor.fetchone()
+    uid = int(user_code[0])
+
+    logger.debug(uid)
+
+    cursor.execute('SELECT CityList FROM board_sd_user_category WHERE UserId = %s AND CategoryId = %s', (uid,
+                                                                                                         cat))
+    curent = cursor.fetchone()
+    if curent[0] is not None:
+        city_str = str(curent[0])
+        city_list = city_str.split(',')
+        if city not in city_list:
+            city_str += ',' + city
+            print(city_str + '1')
+    else:
+        city_str = city
+        print(city_str + '2')
+    cursor.execute('UPDATE board_sd_user_category SET CityList = %s WHERE UserId = %s AND CategoryId = %s', (city_str,
+                                                                                                             uid,
+                                                                                                             cat))
+    await bot.edit_message_text(text='Город добавен',
+                                chat_id=cbq.message.chat.id,
+                                message_id=cbq.message.message_id)
+    cursor.close()
+    conn.close()
+    pass
 
 
 # Обработка отписки
@@ -337,11 +679,14 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
     cursor.execute('SET NAMES utf8;')
     cursor.execute('SET CHARACTER SET utf8;')
     cursor.execute('SET character_set_connection=utf8;')
-    if code in range(1,5):
-        cursor.callproc('DeleteCategoryToUser', (user_code, code, 0))
-        cursor.execute('SELECT @_DeleteCategoryToUser_0, @_DeleteCategoryToUser_1, @_DeleteCategoryToUser_2')
+    if code in range(1, 5):
+        cursor.execute('SELECT Id FROM board_sd_bot_user WHERE Code = %s', user_code)
         res = cursor.fetchone()
-        if res[2] < 0:
+        user_id = res[0]
+        cursor.execute('DELETE FROM board_sd_user_category WHERE UserId = %s and CategoryId = %s', (user_id, code))
+        res = cursor.rowcount
+        print(res)
+        if res <= 0:
             successfully = False
         await bot.answer_callback_query(callback_query.id, text='Отписываемся')
     else:
@@ -394,4 +739,3 @@ if __name__ == '__main__':
     loop.run_forever()
 
     print('stop', time.ctime())
-

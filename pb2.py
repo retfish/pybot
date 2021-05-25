@@ -61,6 +61,10 @@ class DB:
         self.cursor.execute(sql, param)
         return self.cursor.rowcount
 
+    def last_row_wi(self, sql, param):
+        self.cursor.execute(sql, param)
+        return self.cursor.lastrowid
+
 
 class SetStates(StatesGroup):
     timeFrom = State()
@@ -122,34 +126,21 @@ async def all_msg_handler(message: types.Message):
         return ()
     user_id = message.from_user.id
     data_update(user_id)
-    conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
-                           db='bot1', use_unicode=1, charset='utf8')
-    conn.autocommit(True)
-
-    cursor = conn.cursor()
-    cursor.execute('SET NAMES utf8;')
-    cursor.execute('SET CHARACTER SET utf8;')
-    cursor.execute('SET character_set_connection=utf8;')
+    db = DB()
 
     # ids = ''
     # userid = 0
 
-    cursor.execute("SELECT Id FROM board_sd_bot_user where Code=%s", user_id)
-    logger.debug('3')
-    if cursor.rowcount > 0:
-        row = cursor.fetchone()
+    if db.rowcount("SELECT Id FROM board_sd_bot_user where Code=%s", user_id) > 0:
+        row = db.execute_one("SELECT Id FROM board_sd_bot_user where Code=%s", user_id)
         userid = row[0]
-        logger.debug(userid)
     else:
         userid = 0
 
     # add new user(работает)
     if userid == 0 and button_text.find('Подписаться') > 0:
-        # logger.debug('4.1')
         firstname = message.from_user.first_name
-        cursor.execute("INSERT INTO board_sd_bot_user (Code,Name) VALUES (%s,%s)", (user_id, firstname))
-        # cursor.execute("INSERT INTO board_sd_bot_user (Code,Name) VALUES ("+user_id+","+message.from_user.first_name+")")
-        userid = cursor.lastrowid
+        userid = db.last_row_wi("INSERT INTO board_sd_bot_user (Code,Name) VALUES (%s,%s)", (user_id, firstname))
         logger.debug('new userr id', userid)
     logger.debug('5')
     if userid == 0:
@@ -157,10 +148,9 @@ async def all_msg_handler(message: types.Message):
     logger.debug(user_id)
     logger.debug(userid)
     if button_text.find('Подписаться') > 0:
-        cursor.execute("SELECT * FROM board_sd_category where Id not in " +
+        categories = db.execute_all("SELECT * FROM board_sd_category where Id not in " +
                        "(select CategoryId from board_sd_user_category where UserId='%s')", userid)
         keys = InlineKeyboardMarkup()
-        categories = cursor.fetchall()
         for category in categories:
             cat = category[0]
             url = category[1]
@@ -173,10 +163,9 @@ async def all_msg_handler(message: types.Message):
         await message.reply('✅ Подписаться', reply_markup=keys, reply=False)
 
     if button_text.find('Отписаться') > 0:
-        cursor.execute("SELECT * FROM board_sd_category where Id in " +
+        categories = db.execute_all("SELECT * FROM board_sd_category where Id in " +
                        "(select CategoryId from board_sd_user_category where UserId='%s')", userid)
         keys = InlineKeyboardMarkup()
-        categories = cursor.fetchall()
         for category in categories:
             cat = category[0]
             url = category[1]
@@ -189,8 +178,7 @@ async def all_msg_handler(message: types.Message):
             keys.row(InlineKeyboardButton(descr, callback_data='cat_out_' + str(cat)))
         await message.reply('❎ Отписаться', reply_markup=keys, reply=False)
 
-    cursor.close()
-    conn.close()
+    db.close()
 
 
 # Информация

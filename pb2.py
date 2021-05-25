@@ -57,9 +57,9 @@ class DB:
         self.cursor.callproc(sql, param)
         return True
 
-    def rowcount(self, sql,param):
+    def rowcount(self, sql, param):
         self.cursor.execute(sql, param)
-        return self.cursor.rowcount()
+        return self.cursor.rowcount
 
 
 class SetStates(StatesGroup):
@@ -610,8 +610,8 @@ async def process_callback_button_cat_i(callback_query: types.CallbackQuery):
     if code in range(1, 5):
         res = db.execute_one('SELECT Id FROM board_sd_bot_user WHERE Code = %s', user_code)
         user_id = res[0]
+        print('613', res)
         res = db.rowcount('DELETE FROM board_sd_user_category WHERE UserId = %s and CategoryId = %s', (user_id, code))
-        print(res)
         if res <= 0:
             successfully = False
         await bot.answer_callback_query(callback_query.id, text='Отписываемся')

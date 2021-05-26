@@ -25,7 +25,7 @@ from config import *
 
 class DB:
     def __init__(self):
-        self.conn = pymysql.connect(host='localhost', port=3306, user='ret', passwd='fr6h',
+        self.conn = pymysql.connect(host='localhost', port=3306, user='localuser', passwd='fr6h',
                            db='bot1', use_unicode=1, charset='utf8')
         self.conn.autocommit(True)
         self.cursor = self.conn.cursor()
@@ -89,6 +89,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 print(datetime.today())
+
 
 def data_update(user_id):
     visit_date = datetime.today()

@@ -112,8 +112,10 @@ async def process_start_command(message: types.Message):
                         "Выбирай нужное действие в меню",
                         reply_markup=markup_zero)
     data_update(message.from_user.id)
-
-
+    user_time = message.date.strftime('%H:%M:%S')
+    db = DB()
+    db.execute('UPDATE board_sd_bot_user SET CreatedTime = %s WHERE Code = %s', (user_time, message.from_user.id))
+    db.close()
 # Подписки\Отписки
 
 
